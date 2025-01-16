@@ -162,12 +162,14 @@ pub fn orthogonal_to_index(dir: Vec2<i32>) -> Option<usize> {
 mod tests {
     use lina::{point2, vec2};
 
-    use super::{read_grid, Point};
+    use crate::grid::Grid;
+
+    use super::Point;
 
     #[test]
     fn test_grid() {
         let s = "###\n...\n...";
-        let g = read_grid(s, |x| x);
+        let g = Grid::read(s, |x| x);
 
         let p: Point = point2(1, 1);
         let v = vec2(1, -1);
@@ -177,13 +179,13 @@ mod tests {
     }
 
     #[test]
-    fn test_will_panic() {
+    fn test_outside() {
         let s = "###\n...\n...";
-        let g = read_grid(s, |x| x);
+        let g = Grid::read(s, |x| x);
 
         let p: Point = point2(1, 1);
         let v = vec2(1, -1);
 
-        g[p + (2 * v)];
+        assert!(!g.contains(p + 8 * v))
     }
 }
