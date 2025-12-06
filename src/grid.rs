@@ -5,6 +5,7 @@ use std::{
 
 use lina::{point2, vec2, Point2, Vec2};
 
+#[derive(Debug)]
 pub struct Grid<C>(pub Vec<Vec<C>>);
 
 pub type Point = Point2<i32>;
@@ -91,15 +92,61 @@ impl<C> Grid<C> {
         );
     }
 
-    // pub fn iter_coordinates(&self) -> PointIterator {
-    //     let dimension = self.dimension();
-    //     (0..dimension.y)
-    //         .flat_map(|y| 0..dimension.x)
-    //         .map(|x| point2(x, y))
-    // }
+    pub fn neighbours(&self, src: Point) -> Vec<(Point, &C)> {
+        UP_RIGHT_DOWN_LEFT
+            .iter()
+            .map(|&d| src + d)
+            .filter(|&n| self.contains(n))
+            .map(|p| (p, &self[p]))
+            .collect()
+    }
+
+    pub fn iter_coordinates(&self) -> PointIterator {
+        PointIterator::new(self.dimension())
+    }
+
+    pub fn get(&self, p: Point) -> Option<&C> {
+        if self.contains(p) {
+            Some(&self[p])
+        } else {
+            None
+        }
+    }
 }
 
-// struct PointIterator {}
+pub struct PointIterator {
+    dim: Vec2<i32>,
+    p: Point,
+}
+
+impl PointIterator {
+    fn new(dim: Vec2<i32>) -> Self {
+        Self {
+            dim,
+            p: point2(0, 0),
+        }
+    }
+}
+
+impl Iterator for PointIterator {
+    type Item = Point;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let p = self.p;
+        self.p.x += 1;
+        if self.p.x == self.dim.x {
+            self.p.x = 0;
+            self.p.y += 1;
+        }
+
+        if p.x < self.dim.x && p.y < self.dim.y {
+            Some(p)
+        } else {
+            None
+        }
+    }
+    //
+}
 
 impl<C> Grid<C>
 where
@@ -110,6 +157,14 @@ where
     }
 }
 
+impl<C> Grid<C>
+where
+    C: Default + Copy,
+{
+    pub fn get_or_default(&self, p: Point) -> C {
+        self.get(p).copied().unwrap_or_default()
+    }
+}
 impl<T> Grid<T>
 where
     T: Display,
