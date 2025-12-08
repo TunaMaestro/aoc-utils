@@ -3,6 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use arrayvec::ArrayVec;
 use lina::{point2, vec2, Point2, Vec2};
 
 #[derive(Debug)]
@@ -92,7 +93,7 @@ impl<C> Grid<C> {
         );
     }
 
-    pub fn neighbours(&self, src: Point) -> Vec<(Point, &C)> {
+    pub fn neighbours(&self, src: Point) -> ArrayVec<(Point, &C), 4> {
         UP_RIGHT_DOWN_LEFT
             .iter()
             .map(|&d| src + d)
@@ -101,7 +102,7 @@ impl<C> Grid<C> {
             .collect()
     }
 
-    pub fn neighbours_and_corners(&self, src: Point) -> Vec<(Point, &C)> {
+    pub fn neighbours_and_corners(&self, src: Point) -> ArrayVec<(Point, &C), 8> {
         NEIGHBOURS
             .iter()
             .map(|&d| src + d)
