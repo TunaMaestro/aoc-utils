@@ -9,8 +9,8 @@ impl<T: Copy + Clone + Hash + Eq> Element for T {}
 
 #[derive(PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub struct Node<T: Element> {
-    value: T,
-    priority: usize,
+    pub value: T,
+    pub priority: usize,
 }
 
 /// A queue where the maximum priority is strictly less than N
@@ -41,14 +41,25 @@ impl<T: Element, const N: usize> BucketQueue<T, N> {
             None => return,
         };
 
-        self.inner[current_priority].remove(item);
+        self.move_item(item, to, current_priority);
+    }
+
+    fn move_item(&mut self, item: T, to: usize, from: usize) {
+        self.inner[from].remove(item);
         self.inner[to].insert(item);
         self.priorities.insert(item, to);
+    }
+
+    pub fn decrease_key(&mut self, item: T, by: usize) {
+        let Some(&current_priority) = self.priorities.get(&item) else { return };
+        let to = current_priority.saturating_sub(by);
+        self.move_item(item, to, current_priority);
     }
 
     pub fn pop_min(&mut self) -> Option<Node<T>> {
         for (p, bucket) in self.inner.iter_mut().enumerate() {
             if let Some(x) = bucket.items.iter().next().copied() {
+                self.priorities.remove(&x);
                 bucket.remove(x);
                 return Some(Node {
                     value: x,

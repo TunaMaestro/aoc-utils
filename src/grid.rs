@@ -101,6 +101,15 @@ impl<C> Grid<C> {
             .collect()
     }
 
+    pub fn neighbours_and_corners(&self, src: Point) -> Vec<(Point, &C)> {
+        NEIGHBOURS
+            .iter()
+            .map(|&d| src + d)
+            .filter(|&n| self.contains(n))
+            .map(|p| (p, &self[p]))
+            .collect()
+    }
+
     pub fn iter_coordinates(&self) -> PointIterator {
         PointIterator::new(self.dimension())
     }
@@ -189,6 +198,7 @@ impl<C: Copy> Grid<C> {
 }
 
 pub const UP_RIGHT_DOWN_LEFT: [Vec2<i32>; 4] = [vec2(0, -1), vec2(1, 0), vec2(0, 1), vec2(-1, 0)];
+pub const NEIGHBOURS: [Vec2<i32>; 8] = [vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(0, -1), vec2(0, 1), vec2(1, -1), vec2(1, 0), vec2(1, 1)];
 
 pub fn orthogonal_to_index(dir: Vec2<i32>) -> Option<usize> {
     let (x, y) = (dir.x, dir.y);
