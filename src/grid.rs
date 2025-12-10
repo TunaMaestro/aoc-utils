@@ -4,10 +4,19 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use lina::{point2, vec2, Point2, Vec2};
+use lina::{Point2, Vec2, point2, vec2};
 
 #[derive(Debug)]
-pub struct Grid<C>(pub Vec<Vec<C>>);
+pub struct Grid<C> {
+    inner: Vec<C>,
+    width: usize,
+}
+
+impl<C> Grid<C> {
+    fn idx(&self, y: usize, x: usize) -> usize {
+        return y * self.width + x;
+    }
+}
 
 pub type Point = Point2<i32>;
 
@@ -16,57 +25,62 @@ impl<C> Index<Point> for Grid<C> {
 
     /// Panics if the point is out of bounds
     fn index(&self, index: Point) -> &Self::Output {
-        &self.0[index.y as usize][index.x as usize]
+        &self.inner[self.idx(index.y as usize, index.x as usize)]
     }
 }
 
 impl<C> IndexMut<Point> for Grid<C> {
     fn index_mut(&mut self, index: Point) -> &mut Self::Output {
-        &mut self.0[index.y as usize][index.x as usize]
+        let idx = self.idx(index.y as usize, index.x as usize);
+        &mut self.inner[idx]
     }
 }
 
 impl<C> Grid<C> {
     pub fn new(v: Vec<Vec<C>>) -> Grid<C> {
-        Grid(v)
+        let width = v[0].len();
+        Grid {
+            inner: v.into_iter().flatten().collect(),
+            width,
+        }
     }
 
     pub fn read(input: &str, cell: fn(char) -> C) -> Grid<C> {
-        let g: Vec<Vec<C>> = input
+        let width = input
+            .find("\n")
+            .expect("Expect a newline character to signify width");
+        let g: Vec<C> = input
             .trim()
             .split('\n')
-            .map(|ln| ln.chars().into_iter().map(cell).collect())
+            .map(|ln| ln.chars().into_iter().map(cell))
+            .flatten()
             .collect();
 
         #[cfg(debug_assertions)]
         {
-            let line_lens: Vec<usize> = g.iter().map(|x| x.len()).collect();
+            let line_lens: Vec<usize> = input.trim().split("\n").map(|x| x.len()).collect();
             if line_lens.len() > 0 {
+                let lens_str = line_lens
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 assert!(
-                    line_lens.iter().all(|&x| x == line_lens[0]),
-                    "All lines must be the same length"
+                    line_lens.iter().all(|&x| x == line_lens[0] && x == width),
+                    "All lines must be the same length: {}",
+                    lens_str
                 );
             }
         }
-        Grid(g)
+        Grid { inner: g, width }
     }
 
     pub fn position(&self, test: fn(&C) -> bool) -> Option<Point> {
-        let coords = self
-            .0
-            .iter()
-            .enumerate()
-            .map(|(i, &ref v)| (i, v.iter().position(|x: &C| test(x))))
-            .find_map(|(y, x)| x.and_then(|x| Some(point2(x as i32, y as i32))));
-        coords
+        self.iter_coordinates().filter(|x| test(&self[*x])).next()
     }
 
     pub fn contains(&self, coord: Point) -> bool {
-        coord.x >= 0
-            && coord.y >= 0
-            && self.0.len() > 0
-            && self.0.len() > coord.y as usize
-            && self.0[0].len() > coord.x as usize
+        coord.x >= 0 && coord.y >= 0 && self.dimension().y > coord.y && self.dimension().x > coord.x
     }
     pub fn new_with_dimensions(dimension: Vec2<i32>, new: impl Fn(Point) -> C) -> Grid<C> {
         Grid::new(
@@ -77,23 +91,21 @@ impl<C> Grid<C> {
     }
 
     pub fn dimension(&self) -> Vec2<i32> {
-        if self.0.len() == 0 {
+        if self.inner.len() == 0 {
             vec2(0, 0)
         } else {
-            vec2(self.0[0].len() as i32, self.0.len() as i32)
+            vec2(self.width as i32, (self.inner.len() / self.width) as i32)
         }
     }
 
     pub fn map<T>(&self, f: impl Fn(&C) -> T) -> Grid<T> {
-        return Grid(
-            self.0
-                .iter()
-                .map(|x| x.iter().map(|x| f(x)).collect())
-                .collect(),
-        );
+        return Grid {
+            inner: self.inner.iter().map(|x| f(x)).collect(),
+            width: self.width,
+        };
     }
 
-    pub fn neighbours(&self, src: Point) -> ArrayVec<(Point, &C), 4> {
+    pub fn adjacent(&self, src: Point) -> ArrayVec<(Point, &C), 4> {
         UP_RIGHT_DOWN_LEFT
             .iter()
             .map(|&d| src + d)
@@ -102,7 +114,7 @@ impl<C> Grid<C> {
             .collect()
     }
 
-    pub fn neighbours_and_corners(&self, src: Point) -> ArrayVec<(Point, &C), 8> {
+    pub fn neighbours(&self, src: Point) -> ArrayVec<(Point, &C), 8> {
         NEIGHBOURS
             .iter()
             .map(|&d| src + d)
@@ -180,8 +192,8 @@ where
     T: Display,
 {
     pub fn display(&self) -> String {
-        self.0
-            .iter()
+        self.inner
+            .chunks(self.width)
             .map(|x| x.iter().map(|x| format!("{x}")).collect())
             .collect::<Vec<String>>()
             .join("\n")
@@ -199,7 +211,16 @@ impl<C: Copy> Grid<C> {
 }
 
 pub const UP_RIGHT_DOWN_LEFT: [Vec2<i32>; 4] = [vec2(0, -1), vec2(1, 0), vec2(0, 1), vec2(-1, 0)];
-pub const NEIGHBOURS: [Vec2<i32>; 8] = [vec2(-1, -1), vec2(-1, 0), vec2(-1, 1), vec2(0, -1), vec2(0, 1), vec2(1, -1), vec2(1, 0), vec2(1, 1)];
+pub const NEIGHBOURS: [Vec2<i32>; 8] = [
+    vec2(-1, -1),
+    vec2(-1, 0),
+    vec2(-1, 1),
+    vec2(0, -1),
+    vec2(0, 1),
+    vec2(1, -1),
+    vec2(1, 0),
+    vec2(1, 1),
+];
 
 pub fn orthogonal_to_index(dir: Vec2<i32>) -> Option<usize> {
     let (x, y) = (dir.x, dir.y);
