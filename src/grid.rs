@@ -36,6 +36,22 @@ impl<C> IndexMut<Point> for Grid<C> {
     }
 }
 
+impl<C> Index<Point2<usize>> for Grid<C> {
+    type Output = C;
+
+    /// Panics if the point is out of bounds
+    fn index(&self, index: Point2<usize>) -> &Self::Output {
+        &self.inner[self.idx(index.y, index.x)]
+    }
+}
+
+impl<C> IndexMut<Point2<usize>> for Grid<C> {
+    fn index_mut(&mut self, index: Point2<usize>) -> &mut Self::Output {
+        let idx = self.idx(index.y, index.x);
+        &mut self.inner[idx]
+    }
+}
+
 impl<C> Grid<C> {
     pub fn new(v: Vec<Vec<C>>) -> Grid<C> {
         let width = v[0].len();
