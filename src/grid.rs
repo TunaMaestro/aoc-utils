@@ -261,6 +261,12 @@ pub fn orthogonal_to_index(dir: Vec2<i32>) -> Option<usize> {
     Some(i as usize)
 }
 
+impl<C: PartialEq> PartialEq for Grid<C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner && self.width == other.width
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use lina::{point2, vec2};
