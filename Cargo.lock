@@ -40,9 +40,9 @@ checksum = "ef657dfab802224e671f5818e9a4935f9b1957ed18e58292690cc39e7a4092a3"
 
 [[package]]
 name = "lina"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd6bcbac98c0d736948ab3fca7ca8168f5da30f828d1cdcbd38cfa85bc9330e4"
+checksum = "40db588db735d61db2b2be927f9cd1d456e71111c346127161c303cec9f09608"
 dependencies = [
  "bytemuck",
  "num-traits",

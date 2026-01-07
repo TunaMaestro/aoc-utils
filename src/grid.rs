@@ -4,7 +4,7 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use lina::{Point2, Vec2, point2, vec2};
+use lina::{Matrix, Point2, Vec2, point2, vec2};
 
 #[derive(Debug)]
 pub struct Grid<C> {
@@ -20,17 +20,78 @@ impl<C> Grid<C> {
 
 pub type Point = Point2<i32>;
 
+pub trait GridTrait:
+    Index<Point, Output = Self::Cell>
+    + IndexMut<Point>
+    + Index<Point2<usize>, Output = Self::Cell>
+    + IndexMut<Point2<usize>>
+{
+    type Cell;
+
+    fn position(&self, test: fn(&Self::Cell) -> bool) -> Option<Point>;
+    fn contains(&self, coord: Point) -> bool;
+    fn dimension(&self) -> Vec2<i32>;
+    fn map<T>(&self, f: impl Fn(&Self::Cell) -> T) -> Grid<T>;
+    fn adjacent(&self, src: Point) -> ArrayVec<(Point, &Self::Cell), 4>;
+    fn iter_coordinates(&self) -> PointIterator;
+    fn get(&self, p: Point) -> Option<&Self::Cell>;
+    fn display(&self) -> String
+    where
+        Self::Cell: Display;
+}
+
+impl<C> GridTrait for Grid<C> {
+    type Cell = C;
+
+    fn position(&self, test: fn(&C) -> bool) -> Option<Point> {
+        Grid::position(self, test)
+    }
+
+    fn contains(&self, coord: Point) -> bool {
+        Grid::contains(self, coord)
+    }
+
+    fn dimension(&self) -> Vec2<i32> {
+        Grid::dimension(self)
+    }
+
+    fn map<T>(&self, f: impl Fn(&C) -> T) -> Grid<T> {
+        Grid::map(self, f)
+    }
+
+    fn adjacent(&self, src: Point) -> ArrayVec<(Point, &C), 4> {
+        Grid::adjacent(self, src)
+    }
+
+    fn iter_coordinates(&self) -> PointIterator {
+        Grid::iter_coordinates(self)
+    }
+
+    fn get(&self, p: Point) -> Option<&C> {
+        Grid::get(self, p)
+    }
+
+    fn display(&self) -> String
+    where
+        C: Display,
+    {
+        Grid::display(self)
+    }
+}
+
 impl<C> Index<Point> for Grid<C> {
     type Output = C;
 
     /// Panics if the point is out of bounds
     fn index(&self, index: Point) -> &Self::Output {
+        debug_assert!(self.contains(index));
         &self.inner[self.idx(index.y as usize, index.x as usize)]
     }
 }
 
 impl<C> IndexMut<Point> for Grid<C> {
     fn index_mut(&mut self, index: Point) -> &mut Self::Output {
+        debug_assert!(self.contains(index));
         let idx = self.idx(index.y as usize, index.x as usize);
         &mut self.inner[idx]
     }
@@ -41,12 +102,14 @@ impl<C> Index<Point2<usize>> for Grid<C> {
 
     /// Panics if the point is out of bounds
     fn index(&self, index: Point2<usize>) -> &Self::Output {
+        debug_assert!(self.contains(index.map(|x| x as i32)));
         &self.inner[self.idx(index.y, index.x)]
     }
 }
 
 impl<C> IndexMut<Point2<usize>> for Grid<C> {
     fn index_mut(&mut self, index: Point2<usize>) -> &mut Self::Output {
+        debug_assert!(self.contains(index.map(|x| x as i32)));
         let idx = self.idx(index.y, index.x);
         &mut self.inner[idx]
     }
@@ -267,13 +330,158 @@ impl<C: PartialEq> PartialEq for Grid<C> {
     }
 }
 
+pub struct TransformGrid<'a, C> {
+    matrix: Matrix<i32, 2, 2>,
+    matrix_inv: Matrix<i32, 2, 2>,
+    grid: &'a mut Grid<C>,
+}
+
+fn transform_keep_positive_quadrant(
+    dimension: Vec2<i32>,
+    matrix: Matrix<i32, 2, 2>,
+    point: Point,
+) -> Point {
+    let dimension = dimension - Vec2::new(1, 1);
+    let transformed_idx = matrix.transform(point.to_vec());
+    let dim_tfn = matrix.transform(dimension);
+    let abs_dim_tfn = dim_tfn.map(|x| x.abs());
+    let offset = ((abs_dim_tfn - dim_tfn) / 2).to_point();
+    let positive_positive_idx = offset + transformed_idx;
+    positive_positive_idx
+}
+
+impl<'a, C> TransformGrid<'a, C> {
+    fn transform_point(&self, index: Point) -> Point {
+        transform_keep_positive_quadrant(self.grid.dimension(), self.matrix, index)
+    }
+
+    fn inverse_point(&self, index: Point) -> Point {
+        transform_keep_positive_quadrant(self.dimension(), self.matrix_inv, index)
+    }
+
+    pub fn from_grid(grid: &'a mut Grid<C>, transform: Matrix<i32, 2, 2>) -> Self {
+        let (a, b, c, d) = (
+            transform.elem(0, 0),
+            transform.elem(0, 1),
+            transform.elem(1, 0),
+            transform.elem(1, 1),
+        );
+        let det = a * d - b * c;
+
+        assert!(det == 1 || det == -1, "Transform matrix must be unitary");
+
+        let inv = Matrix::from_rows([[d, -b], [-c, a]]) * det;
+
+        TransformGrid {
+            matrix: transform,
+            matrix_inv: inv,
+            grid,
+        }
+    }
+}
+
+impl<'a> TransformGrid<'a, ()> {
+    pub fn rot(count: usize) -> Matrix<i32, 2, 2> {
+        let id = Matrix::identity();
+        let rot = Matrix::from_rows([[0, -1], [1, 0]]);
+        (0..count).fold(id, |a, _| rot * a)
+    }
+}
+
+impl<'a, C> Index<Point> for TransformGrid<'a, C> {
+    type Output = C;
+
+    /// Panics if the point is out of bounds
+    fn index(&self, index: Point) -> &Self::Output {
+        self.grid.index(self.inverse_point(index))
+    }
+}
+
+impl<'a, C> IndexMut<Point> for TransformGrid<'a, C> {
+    fn index_mut(&mut self, index: Point) -> &mut Self::Output {
+        self.grid.index_mut(self.inverse_point(index))
+    }
+}
+
+impl<'a, C> Index<Point2<usize>> for TransformGrid<'a, C> {
+    type Output = C;
+
+    /// Panics if the point is out of bounds
+    fn index(&self, index: Point2<usize>) -> &Self::Output {
+        self.grid.index(
+            self.inverse_point(index.map(|x| x as i32))
+                .map(|x| x as usize),
+        )
+    }
+}
+
+impl<'a, C> IndexMut<Point2<usize>> for TransformGrid<'a, C> {
+    fn index_mut(&mut self, index: Point2<usize>) -> &mut Self::Output {
+        self.grid.index_mut(
+            self.inverse_point(index.map(|x| x as i32))
+                .map(|x| x as usize),
+        )
+    }
+}
+
+impl<'a, C> GridTrait for TransformGrid<'a, C> {
+    type Cell = C;
+
+    fn position(&self, test: fn(&Self::Cell) -> bool) -> Option<Point> {
+        self.grid.position(test).map(|p| self.transform_point(p))
+    }
+
+    fn contains(&self, coord: Point) -> bool {
+        self.grid.contains(self.inverse_point(coord))
+    }
+
+    fn dimension(&self) -> Vec2<i32> {
+        self.matrix
+            .transform(self.grid.dimension())
+            .map(|x| x.abs())
+    }
+
+    fn map<T>(&self, f: impl Fn(&Self::Cell) -> T) -> Grid<T> {
+        self.grid.map(f)
+    }
+
+    fn adjacent(&self, src: Point) -> ArrayVec<(Point, &Self::Cell), 4> {
+        self.grid.adjacent(self.inverse_point(src))
+    }
+
+    fn iter_coordinates(&self) -> PointIterator {
+        PointIterator::new(self.dimension())
+    }
+
+    fn get(&self, p: Point) -> Option<&Self::Cell> {
+        self.grid.get(self.inverse_point(p))
+    }
+
+    fn display(&self) -> String
+    where
+        Self::Cell: Display,
+    {
+        let mut s = String::new();
+        dbg!(self.dimension(), self.grid.dimension());
+        for y in 0..self.dimension().y {
+            for x in 0..self.dimension().x {
+                let p = Point::new(x, y);
+                dbg!(p, self.inverse_point(p));
+                s += &format!("{}", self[p]);
+            }
+            s += "\n";
+        }
+        s
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use lina::{point2, vec2};
+    use lina::{Matrix, point2, vec2};
 
-    use crate::grid::Grid;
+    use crate::grid::{Grid, GridTrait, TransformGrid};
 
-    use super::Point;
+    use super::*;
 
     #[test]
     fn test_grid() {
@@ -296,5 +504,70 @@ mod tests {
         let v = vec2(1, -1);
 
         assert!(!g.contains(p + 8 * v))
+    }
+
+    #[test]
+    fn test_rots() {
+        assert_eq!(TransformGrid::<()>::rot(0), Matrix::identity());
+        assert_eq!(
+            TransformGrid::<()>::rot(1),
+            Matrix::from_rows([[0, -1], [1, 0]])
+        );
+        assert_eq!(
+            TransformGrid::<()>::rot(3),
+            Matrix::from_rows([[0, 1], [-1, 0]])
+        );
+    }
+
+    #[test]
+    fn test_tranform_grid() {
+        let mut g = Grid::read(
+            &"\
+...........
+...#...#...
+....#.#....
+.....#.....
+....O......
+...O.......
+...........
+",
+            |x| x,
+        );
+
+        let t_g = TransformGrid::from_grid(&mut g, TransformGrid::rot(1));
+
+        let p = t_g.display();
+        assert_eq!(
+            &p,
+            "\
+.......
+.......
+.......
+.O...#.
+..O.#..
+...#...
+....#..
+.....#.
+.......
+.......
+.......
+"
+        );
+    }
+
+    #[test]
+    fn test_grid_point_transform() {
+        let mut g = Grid::new_with_dimensions_uniform(Vec2::new(5, 9), ());
+
+        let tfn = TransformGrid::from_grid(&mut g, TransformGrid::rot(1));
+
+        assert_eq!(tfn.dimension(), Vec2::new(9, 5));
+        assert_eq!(tfn.transform_point(Point::new(0, 0)), Point::new(8, 0));
+        assert_eq!(tfn.transform_point(Point::new(4, 8)), Point::new(0, 4));
+        assert_eq!(tfn.transform_point(Point::new(2, 4)), Point::new(4, 2));
+
+        assert_eq!(tfn.inverse_point(Point::new(8, 0)), Point::new(0, 0));
+        assert_eq!(tfn.inverse_point(Point::new(0, 4)), Point::new(4, 8));
+        assert_eq!(tfn.inverse_point(Point::new(4, 2)), Point::new(2, 4));
     }
 }
