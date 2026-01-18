@@ -1,3 +1,5 @@
+pub mod sparse;
+
 use std::{
     fmt::Display,
     ops::{Index, IndexMut},
@@ -21,19 +23,17 @@ impl<C> Grid<C> {
 pub type Point = Point2<i32>;
 
 pub trait GridTrait:
-    Index<Point, Output = Self::Cell>
-    + IndexMut<Point>
-    + Index<Point2<usize>, Output = Self::Cell>
-    + IndexMut<Point2<usize>>
+    Index<Point, Output = Self::Cell> + IndexMut<Point, Output = Self::Cell>
 {
     type Cell;
 
     fn position(&self, test: fn(&Self::Cell) -> bool) -> Option<Point>;
     fn contains(&self, coord: Point) -> bool;
     fn dimension(&self) -> Vec2<i32>;
-    fn map<T>(&self, f: impl Fn(&Self::Cell) -> T) -> Grid<T>;
+
     fn adjacent(&self, src: Point) -> ArrayVec<(Point, &Self::Cell), 4>;
-    fn iter_coordinates(&self) -> PointIterator;
+
+    fn iter_coordinates(&self) -> impl Iterator<Item = Point>;
     fn get(&self, p: Point) -> Option<&Self::Cell>;
     fn display(&self) -> String
     where
@@ -55,15 +55,11 @@ impl<C> GridTrait for Grid<C> {
         Grid::dimension(self)
     }
 
-    fn map<T>(&self, f: impl Fn(&C) -> T) -> Grid<T> {
-        Grid::map(self, f)
-    }
-
     fn adjacent(&self, src: Point) -> ArrayVec<(Point, &C), 4> {
         Grid::adjacent(self, src)
     }
 
-    fn iter_coordinates(&self) -> PointIterator {
+    fn iter_coordinates(&self) -> impl Iterator<Item = Point> {
         Grid::iter_coordinates(self)
     }
 
@@ -441,15 +437,11 @@ impl<'a, C> GridTrait for TransformGrid<'a, C> {
             .map(|x| x.abs())
     }
 
-    fn map<T>(&self, f: impl Fn(&Self::Cell) -> T) -> Grid<T> {
-        self.grid.map(f)
-    }
-
     fn adjacent(&self, src: Point) -> ArrayVec<(Point, &Self::Cell), 4> {
         self.grid.adjacent(self.inverse_point(src))
     }
 
-    fn iter_coordinates(&self) -> PointIterator {
+    fn iter_coordinates(&self) -> impl Iterator<Item = Point> {
         PointIterator::new(self.dimension())
     }
 
